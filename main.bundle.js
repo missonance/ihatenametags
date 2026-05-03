@@ -86,19 +86,16 @@ const CreateHUD = function(ui) {
       nextTrack.remove();
   }
 
-  function mod(num) {
-      if (typeof num !== 'number' || isNaN(num)) {
-          throw new Error("Input must be a valid number");
-      }
-      return ((num - 1) % 50 + 50) % 50 + 1;
+  function mod(num, size = 50) {
+    return ((num % size) + size) % size;
   }
 
-
+  const nextIndex = mod(getTrackForServer(userServerNumber + 1) + 1, trackNames.length);
   
   nextTrack = document.createElement("p");
   nextTrack.className = "next-track visible";
   nextTrack.style.fontSize = "20px";
-  nextTrack.textContent = `Next Track: ${trackNames[mod(getTrackForServer(userServerNumber) + 1)]}`
+  nextTrack.textContent = `Next Track: ${trackNames[nextIndex]}`
   
   
   HUDtimer.appendChild(nextTrack)
