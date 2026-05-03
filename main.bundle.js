@@ -1249,11 +1249,10 @@ const createClipsMenu = function(exitFunc) {
       const clipIndex = Array.from(container.children).indexOf(selected);
       const clip = clipData[clipIndex];
       customCode = true;
-      const code = await getTrackCode(clip.track);
+      const code = await getTrackCode(clip.track + 1);
       background.remove();
       loadTrack(code);
-      //loadTrack("PolyTrack24pdNCvtojBDAAF9XqUa0Hp1lQHVRlybhkoul6SCH9rf8wMn9anfPksI32yn222OC68EXt1F5K2Bni3bRdImtG0uWAVTQ2NE7RYJPfNLK9SemFbruUzxKfaVbkaYDkQO7u8oxXLa9E7IJLj5zl6tHlUwKNsUqtzpC2W2xFdDFPJdlJWNKCBAmeM1JGGoKQUQkODI2SxygBRVyURRYwtkRrxmlvXKlxB70B5PsM56ekVUPdp4xAYXIf0uruC6FUfyHsw3LnideWbsykItzKADWqferkfJv8KSREf2RRsiynXLXtOobNH5kRCxEUw53uZheTYJIhlUdeAO7eJYfh8Xe2TPBDDbNgeYrekpnUiTEL4fbetJdHVafqHrFniP2F9e3DtgFq0rsePMViXDe9scfQL9H3f00h0VEH40n0vjepYkDfwe28ujVjJfvqfbwrB61pjmKNHiZN8tUNfGVfvLGNdI8Zp7iekW48nbzbgUjpXYybZEDvYp4hf88AVZMZmX2xBeYseRmfAGbNdeXsjnvuG");
-    
+      
       const processed = replayLoaderClass.loadClip({
         recording: clip.data,
         frames: clip.frames
@@ -32960,7 +32959,9 @@ getInviteCode(0);
 
             
             //DORA
-            CreateHUD((0, i.gn)(this, v, "f"));
+            if (!watchingClip) {
+              CreateHUD((0, i.gn)(this, v, "f"));
+            }
             //
           }
           dispose() {
