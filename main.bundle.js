@@ -31,6 +31,9 @@ let targetDateTime =  new Date("2026-05-17 13:00:00 PDT").getTime();
 let pp5_exitTrack;
 let customCode = false;
 let userServerNumber = null;
+let alignment;
+let alignmentFetchTime = Date.now();
+let trackOffset = 0;
 
 const numbServers = 3;
 const totalTracks = 50;
@@ -44,12 +47,23 @@ function calculateCurrentIndex(startIndex) {
   return (startIndex + tracksPassed) % totalTracks;
 }
 
-
 function timeUntilNextRotation() {
+  if (alignment != null) {
+    const elapsed = (Date.now() - alignmentFetchTime) / 1000;
+
+    const remaining = alignment - elapsed;
+
+    if (remaining > 0) {
+      return remaining;
+    }
+    const overshoot = -remaining;
+    const mod = overshoot % serverInterval;
+    const next = serverInterval - mod;
+    return next;
+  }
+
   const elapsed = (Date.now() - rotationEpoch) / 1000;
-  const secondsIntoCurrentInterval = elapsed % serverInterval;
-  const secondsRemaining = serverInterval - secondsIntoCurrentInterval;
-  return secondsRemaining;
+  return serverInterval - (elapsed % serverInterval);
 }
 
 function getTrackForServer(serverNumber) {
@@ -793,7 +807,7 @@ const CreateServerEntry = async function(trackNumber, idx, total, container) {
       img.style.bottom = "8%";
   }
 
-  entry.style.setProperty("--button-bg", `url(https://dorachad.github.io/pp4/trackImages/${trackNumber}.png)`);
+  entry.style.setProperty("--button-bg", `url(https://dorachad.github.io/PPV/trackImages/${trackNumber}.png)`);
 
   const blur = document.createElement("div");
   blur.className = "cover";
@@ -904,7 +918,6 @@ const createBoxDisplay = function(content, importFunc = null) {
   box.appendChild(text);
   ui.appendChild(box)
 }
-
 
 const styles = document.createElement("style");
 styles.textContent = `
@@ -1116,6 +1129,9 @@ const getInviteCode = async function(server) {
     const data = await response.json();
     console.log(data.invite)
     multJoinCode = data.invite;
+    alignment = data.timeLeft;
+    alignmentFetchTime = Date.now();
+    console.log(getTrackForServer(1) - data.track);
   } catch (error) {
     console.error("Error fetching JSON:", error);
   }
@@ -1349,6 +1365,8 @@ const createClipsMenu = function(exitFunc) {
   background.appendChild(wrapper);
   ui.appendChild(background);
 };
+
+getInviteCode(0);
 
 (() => {
   var e,
