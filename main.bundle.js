@@ -35,10 +35,10 @@ let alignment;
 let alignmentFetchTime = Date.now();
 let trackOffset = 0;
 
-const numbServers = 3;
+const numbServers = 5;
 const totalTracks = 50;
 const serverSpacing = Math.floor(totalTracks / numbServers);
-const serverInterval = 300;
+const serverInterval = 900;
 
 const rotationEpoch = new Date(Date.UTC(2026, 4, 3, 20, 0, 0, 0));
 function calculateCurrentIndex(startIndex) {
@@ -123,7 +123,7 @@ const PPVTrackIds = [
   "736b2fa1b10b4fe208f41e9ddd1f2dd74eeb424fc15b3e612d4929649f60508a",
   "82125bc5d07e32951b52ae7fa885d1ef25618bc861f9fd6334eb3500dd440e34",
   "3583b7427394e5e2a641f274b8df5de6aab2de65c2286b14e312565df86ca885",
-  "10971f1719821603d8c1a0a454da10cf60ea5d0a3c1caab3455d46e36b416dd3",
+  "acf0e59570c2177ec50550f856a396d9a725be6529c838eed4963de5874478d7",
   "6628ac96adf10a46d25e30947b9b5685d3c2285209e0b0d40f7e9b240046c03d",
   "ea89139a2174dd5126dd1bf7f052168ebab3830abcde7fa9c2a8da4b1c560e54",
   "bd379d3b9000a2f71988ab15bf6947f61c392c269760a87a3555338be5d1886b",
@@ -971,7 +971,7 @@ button.PPV::before {
   justify-content: center;
   align-items: center;
   position: relative;
-  height: 250px;
+  height: 300px;
 }
 .entry-div > p {
   position: absolute;
@@ -1252,7 +1252,7 @@ const createClipsMenu = function(exitFunc) {
       const code = await getTrackCode(clip.track + 1);
       background.remove();
       loadTrack(code);
-      
+
       const processed = replayLoaderClass.loadClip({
         recording: clip.data,
         frames: clip.frames
