@@ -147,6 +147,7 @@ async function checkAllTargets() {
   return results;
 }
 
+
 window.addEventListener("DOMContentLoaded", async () => {
   console.log("Checking server health...");
   const results = await checkAllTargets();
@@ -159,6 +160,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     logToUser(`  ${r.name}: ${r.status}${pingStr}${alignStr}${errStr}`);
   }
 });
+
 
 
 let HUDtimer;
@@ -72653,7 +72655,7 @@ getInviteCode(3);
               "WebSocket creation not allowed with non-deterministic physics",
             );
           return new WebSocket(
-            "ws://3.222.203.62/" +
+            "wss://dorapolytrack.xyz/" +
               (0, C.gn)(this, ku, "f") +
               "multiplayer/host",
           );
@@ -72664,7 +72666,7 @@ getInviteCode(3);
               "WebSocket creation not allowed with non-deterministic physics",
             );
           return new WebSocket(
-            "ws://3.222.203.62/" +
+            "wss://dorapolytrack.xyz/" +
               (0, C.gn)(this, ku, "f") +
               "multiplayer/join",
           );
@@ -72673,7 +72675,7 @@ getInviteCode(3);
           return new Promise((e, t) => {
             const n =
             //DORA
-                "http://3.222.203.62/" +
+                "https://dorapolytrack.xyz/" +
                 (0, C.gn)(this, ku, "f") +
                 "iceServers?version=0.6.0",
               i = new XMLHttpRequest();
