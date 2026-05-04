@@ -71,6 +71,96 @@ function getTrackForServer(serverNumber) {
   return calculateCurrentIndex(startIndex) + 1;
 }
 
+
+
+const HEALTH_TARGETS = [
+  { name: "Server 1", type: "game", server: 0 },
+  { name: "Server 2", type: "game", server: 1 },
+  { name: "Server 3", type: "game", server: 2 },
+  { name: "Server 4", type: "game", server: 3 },
+  { name: "Leaderboards", type: "leaderboard", url: "https://web-production-25c19.up.railway.app/" },
+];
+const serverHealth = {};
+
+async function checkTarget(target) {
+  const url = target.url || `https://dorapolytrack.xyz/server/${target.server}/api/invite/public`;
+  const start = performance.now();
+  
+  try {
+    const controller = new AbortController();
+    const timeoutMs = target.type === "leaderboard" ? 10000 : 5000;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    const response = await fetch(url, {
+      method: "GET",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+    const ping = Math.round(performance.now() - start);
+
+    if (!response.ok) {
+      return { ...target, status: "down", ping: null, error: `HTTP ${response.status}` };
+    }
+
+    const data = await response.json();
+
+    if (target.type === "game") {
+      if (!data.invite) {
+        return { ...target, status: "no_invite", ping, error: "no invite" };
+      }
+      return {
+        ...target,
+        status: "up",
+        ping,
+        invite: data.invite,
+        alignment: data.timeLeft,
+        alignmentFetchTime: Date.now(),
+      };
+    }
+
+    if (target.type === "leaderboard") {
+      if (typeof data.track_count !== "number") {
+        return { ...target, status: "degraded", ping, error: "unexpected response" };
+      }
+      return { ...target, status: "up", ping, trackCount: data.track_count };
+    }
+
+    return { ...target, status: "up", ping };
+  } catch (err) {
+    return { ...target, status: "down", ping: null, error: err.message };
+  }
+}
+
+async function checkAllTargets() {
+  const results = await Promise.all(HEALTH_TARGETS.map(checkTarget));
+  
+  for (const result of results) {
+    if (result.type === "game") {
+      serverHealth[result.server] = result;
+    } else {
+      serverHealth[result.name] = result;
+    }
+  }
+  
+  return results;
+}
+
+window.addEventListener("DOMContentLoaded", async () => {
+  console.log("Checking server health...");
+  const results = await checkAllTargets();
+  
+  for (const r of results) {
+    const pingStr = r.ping !== null ? ` (${r.ping}ms)` : "";
+    const errStr = r.error ? ` — ${r.error}` : "";
+    const alignStr = r.alignment !== undefined ? ` timeLeft=${r.alignment}s` : "";
+    console.log(`  ${r.name}: ${r.status}${pingStr}${alignStr}${errStr}`);
+    logToUser(`  ${r.name}: ${r.status}${pingStr}${alignStr}${errStr}`);
+  }
+});
+
+
 let HUDtimer;
 let serverTimer;
 let nextTrack;
@@ -1363,6 +1453,9 @@ const createClipsMenu = function(exitFunc) {
 };
 
 getInviteCode(0);
+getInviteCode(1);
+getInviteCode(2);
+getInviteCode(3);
 
 (() => {
   var e,
@@ -72560,7 +72653,7 @@ getInviteCode(0);
               "WebSocket creation not allowed with non-deterministic physics",
             );
           return new WebSocket(
-            "wss://dorapolytrack.xyz/" +
+            "ws://3.222.203.62/" +
               (0, C.gn)(this, ku, "f") +
               "multiplayer/host",
           );
@@ -72571,7 +72664,7 @@ getInviteCode(0);
               "WebSocket creation not allowed with non-deterministic physics",
             );
           return new WebSocket(
-            "wss://dorapolytrack.xyz/" +
+            "ws://3.222.203.62/" +
               (0, C.gn)(this, ku, "f") +
               "multiplayer/join",
           );
@@ -72580,7 +72673,7 @@ getInviteCode(0);
           return new Promise((e, t) => {
             const n =
             //DORA
-                "https://dorapolytrack.xyz/" +
+                "http://3.222.203.62/" +
                 (0, C.gn)(this, ku, "f") +
                 "iceServers?version=0.6.0",
               i = new XMLHttpRequest();
