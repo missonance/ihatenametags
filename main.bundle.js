@@ -35,10 +35,10 @@ let alignment;
 let alignmentFetchTime = Date.now();
 let trackOffset = 0;
 
-const numbServers = 5;
+const numbServers = 3;
 const totalTracks = 50;
 const serverSpacing = Math.floor(totalTracks / numbServers);
-const serverInterval = 900;
+const serverInterval = 300;
 
 const rotationEpoch = new Date(Date.UTC(2026, 4, 3, 20, 0, 0, 0));
 function calculateCurrentIndex(startIndex) {
