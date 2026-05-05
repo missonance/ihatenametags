@@ -41,25 +41,46 @@ const serverSpacing = Math.floor(totalTracks / numbServers);
 const serverInterval = 600;
 
 const rotationEpoch = new Date(Date.UTC(2026, 4, 3, 20, 0, 0, 0));
+
+// Per-server authoritative state from the API.
+// Keyed by 0-based server index (0..numbServers-1).
+// Each entry: { track: 1-based track number, timeLeft: seconds, fetchedAt: ms }
+const serverAlignments = {};
+
+function recordServerAlignment(serverIndex, trackOneBased, timeLeftSeconds) {
+  if (serverIndex == null || serverIndex < 0) return;
+  if (typeof trackOneBased !== "number" || typeof timeLeftSeconds !== "number") return;
+  serverAlignments[serverIndex] = {
+    track: trackOneBased,
+    timeLeft: timeLeftSeconds,
+    fetchedAt: Date.now(),
+  };
+}
+
 function calculateCurrentIndex(startIndex) {
   const elapsed = (Date.now() - rotationEpoch) / 1000;
   const tracksPassed = Math.floor(elapsed / serverInterval);
   return (startIndex + tracksPassed) % totalTracks;
 }
 
-function timeUntilNextRotation() {
-  if (alignment != null) {
-    const elapsed = (Date.now() - alignmentFetchTime) / 1000;
-
-    const remaining = alignment - elapsed;
-
-    if (remaining > 0) {
-      return remaining;
-    }
+function timeUntilNextRotation(serverIndex) {
+  if (serverIndex != null && serverAlignments[serverIndex]) {
+    const a = serverAlignments[serverIndex];
+    const elapsed = (Date.now() - a.fetchedAt) / 1000;
+    const remaining = a.timeLeft - elapsed;
+    if (remaining > 0) return remaining;
     const overshoot = -remaining;
     const mod = overshoot % serverInterval;
-    const next = serverInterval - mod;
-    return next;
+    return serverInterval - mod;
+  }
+
+  if (alignment != null) {
+    const elapsed = (Date.now() - alignmentFetchTime) / 1000;
+    const remaining = alignment - elapsed;
+    if (remaining > 0) return remaining;
+    const overshoot = -remaining;
+    const mod = overshoot % serverInterval;
+    return serverInterval - mod;
   }
 
   const elapsed = (Date.now() - rotationEpoch) / 1000;
@@ -67,6 +88,20 @@ function timeUntilNextRotation() {
 }
 
 function getTrackForServer(serverNumber) {
+  const idx = serverNumber - 1;
+  const a = serverAlignments[idx];
+
+  if (a) {
+    const elapsed = (Date.now() - a.fetchedAt) / 1000;
+    let advanced = 0;
+    if (elapsed >= a.timeLeft) {
+      advanced = 1 + Math.floor((elapsed - a.timeLeft) / serverInterval);
+    }
+    const zeroBased = ((a.track - 1) + advanced) % totalTracks;
+    return ((zeroBased % totalTracks) + totalTracks) % totalTracks + 1;
+  }
+
+  // Fallback: original local-epoch calculation.
   const startIndex = (serverNumber - 1) * serverSpacing;
   return calculateCurrentIndex(startIndex) + 1;
 }
@@ -116,6 +151,7 @@ async function checkTarget(target) {
         ping,
         invite: data.invite,
         alignment: data.timeLeft,
+        track: data.track,
         alignmentFetchTime: Date.now(),
       };
     }
@@ -135,15 +171,20 @@ async function checkTarget(target) {
 
 async function checkAllTargets() {
   const results = await Promise.all(HEALTH_TARGETS.map(checkTarget));
-  
+
   for (const result of results) {
     if (result.type === "game") {
       serverHealth[result.server] = result;
+      if (result.status === "up" &&
+          typeof result.track === "number" &&
+          typeof result.alignment === "number") {
+        recordServerAlignment(result.server, result.track, result.alignment);
+      }
     } else {
       serverHealth[result.name] = result;
     }
   }
-  
+
   return results;
 }
 
@@ -156,8 +197,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     const pingStr = r.ping !== null ? ` (${r.ping}ms)` : "";
     const errStr = r.error ? ` — ${r.error}` : "";
     const alignStr = r.alignment !== undefined ? ` timeLeft=${r.alignment}s` : "";
-    console.log(`  ${r.name}: ${r.status}${pingStr}${alignStr}${errStr}`);
-    logToUser(`  ${r.name}: ${r.status}${pingStr}${alignStr}${errStr}`);
+    const trackStr = r.track !== undefined ? ` track=${r.track}` : "";
+    console.log(`  ${r.name}: ${r.status}${pingStr}${trackStr}${alignStr}${errStr}`);
+    logToUser(`  ${r.name}: ${r.status}${pingStr}${trackStr}${alignStr}${errStr}`);
   }
 });
 
@@ -178,11 +220,14 @@ const CreateHUD = function(ui) {
       nextTrack.remove();
   }
 
-  function mod(num, size = 50) {
+  function mod(num, size = totalTracks) {
     return ((num % size) + size) % size;
   }
 
-  const nextIndex = mod(getTrackForServer(userServerNumber + 1) + 1, trackNames.length);
+  // The next track on the user's current server is the one that follows
+  // the currently active track on that server.
+  const currentForUser = getTrackForServer(userServerNumber + 1); // 1-based
+  const nextIndex = mod(currentForUser, totalTracks) + 1; // wraps 50 -> 1
   
   nextTrack = document.createElement("p");
   nextTrack.className = "next-track visible";
@@ -800,7 +845,8 @@ const updateServerEntries = function(container) {
   }
   
   for (let idx = 0; idx < numbServers; idx++) {
-    const mapNumber = calculateCurrentIndex(serverSpacing * idx) + 1;
+    // 1-based track number for server `idx` (0-based).
+    const mapNumber = getTrackForServer(idx + 1);
     CreateServerEntry(mapNumber, idx, numbServers, container);
   };
 }
@@ -835,7 +881,7 @@ const Createpp5Tab = function(container) {
 
     
     for (let idx = 0; idx < numbServers; idx++) {
-      const mapNumber = calculateCurrentIndex(serverSpacing * idx) + 1;
+      const mapNumber = getTrackForServer(idx + 1);
       CreateServerEntry(mapNumber, idx, numbServers, container);
     };
 }
@@ -1220,7 +1266,14 @@ const getInviteCode = async function(server) {
     multJoinCode = data.invite;
     alignment = data.timeLeft;
     alignmentFetchTime = Date.now();
-    console.log(getTrackForServer(1) - data.track);
+
+    // Record this server's authoritative track + alignment so the rotation
+    // logic on the user side stays in sync with the server.
+    if (typeof data.track === "number" && typeof data.timeLeft === "number") {
+      recordServerAlignment(server, data.track, data.timeLeft);
+    }
+
+    console.log(`server ${server} reports track=${data.track} timeLeft=${data.timeLeft}s`);
   } catch (error) {
     console.error("Error fetching JSON:", error);
   }
@@ -1453,11 +1506,6 @@ const createClipsMenu = function(exitFunc) {
   background.appendChild(wrapper);
   ui.appendChild(background);
 };
-
-getInviteCode(0);
-getInviteCode(1);
-getInviteCode(2);
-getInviteCode(3);
 
 (() => {
   var e,
