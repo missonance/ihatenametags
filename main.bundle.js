@@ -35,16 +35,13 @@ let alignment;
 let alignmentFetchTime = Date.now();
 let trackOffset = 0;
 
-const numbServers = 4;
+const numbServers = 5;
 const totalTracks = 50;
 const serverSpacing = Math.floor(totalTracks / numbServers);
 const serverInterval = 600;
 
 const rotationEpoch = new Date(Date.UTC(2026, 4, 3, 20, 0, 0, 0));
 
-// Per-server authoritative state from the API.
-// Keyed by 0-based server index (0..numbServers-1).
-// Each entry: { track: 1-based track number, timeLeft: seconds, fetchedAt: ms }
 const serverAlignments = {};
 
 function recordServerAlignment(serverIndex, trackOneBased, timeLeftSeconds) {
@@ -101,7 +98,6 @@ function getTrackForServer(serverNumber) {
     return ((zeroBased % totalTracks) + totalTracks) % totalTracks + 1;
   }
 
-  // Fallback: original local-epoch calculation.
   const startIndex = (serverNumber - 1) * serverSpacing;
   return calculateCurrentIndex(startIndex) + 1;
 }
@@ -113,6 +109,7 @@ const HEALTH_TARGETS = [
   { name: "Server 2", type: "game", server: 1 },
   { name: "Server 3", type: "game", server: 2 },
   { name: "Server 4", type: "game", server: 3 },
+  { name: "Server 5", type: "game", server: 4 },
   { name: "Leaderboards", type: "leaderboard", url: "https://web-production-25c19.up.railway.app/" },
 ];
 const serverHealth = {};
