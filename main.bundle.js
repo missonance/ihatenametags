@@ -14627,11 +14627,6 @@ const createClipsMenu = function(exitFunc) {
                 : (0, l.gn)(this, ie, "f").controls;
           }
           setNameTag(e, t) {
-            (null != (0, l.gn)(this, ye, "f") &&
-              (0, l.gn)(this, ye, "f").countryCode == e &&
-              (0, l.gn)(this, ye, "f").name == t) ||
-              ((0, l.GG)(this, ye, { countryCode: e, name: t }, "f"),
-              (0, l.gn)(this, G, "m", We).call(this));
           }
           getCarStyle() {
             return (0, l.gn)(this, Ce, "f");
