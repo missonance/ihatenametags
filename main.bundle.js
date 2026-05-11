@@ -14710,7 +14710,6 @@ const createClipsMenu = function(exitFunc) {
           }
           setNameTag(e, t) {
             if (localStorage.getItem("ppv_hideNametags") === "true") {
-              // Remove existing nametag mesh if present
               if (null != (0, l.gn)(this, be, "f")) {
                 (0, l.gn)(this, be, "f").geometry.dispose();
                 (0, l.gn)(this, be, "f").material.map?.dispose();
