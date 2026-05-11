@@ -35,14 +35,19 @@ let alignment;
 let alignmentFetchTime = Date.now();
 let trackOffset = 0;
 
-const numbServers = 5;
+const numbServers = 8;
 const totalTracks = 50;
 const serverSpacing = Math.floor(totalTracks / numbServers);
-const serverInterval = 600;
+const serverInterval = 900;
 
 const rotationEpoch = new Date(Date.UTC(2026, 4, 3, 20, 0, 0, 0));
 
 const serverAlignments = {};
+
+const STATS_STORAGE_KEY = "polystats_v2";
+const STATS_LEGACY_KEY = "polystats_PPV";
+const STATS_MIGRATION_FLAG = "polystats_migrated_v2";
+const STATS_SERVER_URL = "https://polytrack.pythonanywhere.com/";
 
 function recordServerAlignment(serverIndex, trackOneBased, timeLeftSeconds) {
   if (serverIndex == null || serverIndex < 0) return;
@@ -110,6 +115,9 @@ const HEALTH_TARGETS = [
   { name: "Server 3", type: "game", server: 2 },
   { name: "Server 4", type: "game", server: 3 },
   { name: "Server 5", type: "game", server: 4 },
+  { name: "Server 6", type: "game", server: 5 },
+  { name: "Server 7", type: "game", server: 6 },
+  { name: "Server 8", type: "game", server: 7 },
   { name: "Leaderboards", type: "leaderboard", url: "https://web-production-25c19.up.railway.app/" },
 ];
 const serverHealth = {};
@@ -259,11 +267,11 @@ const PPVTrackIds = [
   "3583b7427394e5e2a641f274b8df5de6aab2de65c2286b14e312565df86ca885",
   "acf0e59570c2177ec50550f856a396d9a725be6529c838eed4963de5874478d7",
   "6628ac96adf10a46d25e30947b9b5685d3c2285209e0b0d40f7e9b240046c03d",
-  "ea89139a2174dd5126dd1bf7f052168ebab3830abcde7fa9c2a8da4b1c560e54",
+  "d9aa76f7f57d392c779b9597ef3f6c35f15d7540f7d261e0910c850c22bb42df",
   "bd379d3b9000a2f71988ab15bf6947f61c392c269760a87a3555338be5d1886b",
   "e8bddc248df6500693a0a3e6bc6a0b8a6402651f5c80f9f07b658be851656c56",
   "16c7b10b85e60edfb77b7abeb60a41309028e16c111e2f98a45b82dda4521d80",
-  "9f749a095137e0e2d22f3b355e83998d41fff70a3323bde1bac369c08f4f50d9",
+  "9246671030df17a297f1c1d34cf30505a4404e8db11f7ff4356b4a9d894b2dd6",
   "d732e13555164f4bb04c131d97aca6dfb201876f4999bc4f3da4d3995ce90c76",
   "5cd274a01ebb26e79257207b9dc4b96ec33b468b2322eee37341eafb227bf097",
   "5188224e1d00283d6b356ce0923b372ed0152122fe7a9ae98b4782ec1c5a3df4",
@@ -316,7 +324,7 @@ const trackNames = {
   9: "Around the Rosy",
   10: "Flight 77",
   11: "Upper Edge",
-  12: "IKEA 2",
+  12: "Twisted Flips",
   13: "Final Abstraction",
   14: "FFF",
   15: "Rail Jail",
@@ -657,7 +665,7 @@ const leaderboardUI = async function() {
   createCountdown(ld);
   
   const h3 = document.createElement("h3");
-  h3.textContent = "Poliest Poly 4";
+  h3.textContent = "Poliest Poly V";
   h3.style.fontSize = "22px";
   h3.style.margin = "0 10px 10px 10px";
   h3.style.opacity = "0.5";
@@ -745,8 +753,88 @@ const leaderboardUI = async function() {
   st.appendChild(bk);
 }
 
-
-
+function migrateLegacyStatsStorage() {
+    if (window.localStorage.getItem(STATS_MIGRATION_FLAG) === "1") return;
+ 
+    try {
+        const legacy = JSON.parse(window.localStorage.getItem(STATS_LEGACY_KEY)) || {};
+        const v2 = JSON.parse(window.localStorage.getItem(STATS_STORAGE_KEY)) || {};
+ 
+        for (const [indexStr, value] of Object.entries(legacy)) {
+            const idx = parseInt(indexStr, 10);
+            if (!Number.isInteger(idx)) continue;
+            const trackId = PPVTrackIds[idx];
+            if (!trackId) continue;
+            if (!Array.isArray(value) || value.length < 2) continue;
+ 
+            const existing = v2[trackId];
+            if (existing) {
+                v2[trackId] = [
+                    Math.max(existing[0] | 0, value[0] | 0),
+                    Math.max(existing[1] | 0, value[1] | 0),
+                ];
+            } else {
+                v2[trackId] = [value[0] | 0, value[1] | 0];
+            }
+        }
+ 
+        window.localStorage.setItem(STATS_STORAGE_KEY, JSON.stringify(v2));
+        window.localStorage.setItem(STATS_MIGRATION_FLAG, "1");
+    } catch (err) {
+        console.warn("Stats migration failed:", err);
+    }
+}
+ 
+async function syncStatsWithServer() {
+    let userId, nickname;
+    try {
+        const profile = pp_User.getCurrentUserProfile();
+        userId = profile.tokenHash;
+        nickname = profile.nickname || profile.name || profile.username || null;
+    } catch (e) {
+        return;
+    }
+    if (!userId || !/^[0-9a-f]{64}$/.test(userId)) return;
+ 
+    const local = JSON.parse(window.localStorage.getItem(STATS_STORAGE_KEY)) || {};
+ 
+    const stats = {};
+    for (const [trackId, value] of Object.entries(local)) {
+        if (!/^[0-9a-f]{64}$/.test(trackId)) continue;
+        if (!Array.isArray(value) || value.length < 2) continue;
+        const respawns = value[0] | 0;
+        const timeSeconds = value[1] | 0;
+        if (respawns < 0 || timeSeconds < 0) continue;
+        stats[trackId] = { respawns, timeSeconds };
+    }
+ 
+    const body = { stats };
+    if (typeof nickname === "string" && nickname.trim()) body.nickname = nickname.trim();
+ 
+    try {
+        const r = await fetch(`${STATS_SERVER_URL}/stats/${userId}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+        if (!r.ok) {
+            console.warn("Stats sync failed:", r.status);
+            return;
+        }
+        const data = await r.json();
+        if (!data || !data.stats) return;
+ 
+        const merged = {};
+        for (const [trackId, entry] of Object.entries(data.stats)) {
+            merged[trackId] = [entry.respawns | 0, entry.timeSeconds | 0];
+        }
+        window.localStorage.setItem(STATS_STORAGE_KEY, JSON.stringify(merged));
+        logToUser("Statistics Synced With Server")
+    } catch (err) {
+        console.warn("Stats sync error:", err);
+    }
+}
+ 
 class StatisticsMod {
     tRespawn = 0;
     tTime = 0;
@@ -754,10 +842,10 @@ class StatisticsMod {
     currentTrackName;
     attemptsDiv;
     timeDiv;
-
+ 
     timer_interval = null;
     timer_active = false;
-
+ 
     timer_start = function() {
         if (this.timer_active) return;
         this.timer_active = true;
@@ -770,7 +858,7 @@ class StatisticsMod {
             }
         }, 1000);
     }
-
+ 
     timer_stop = function() {
         if (!this.timer_active) return;
         this.timer_active = false;
@@ -779,39 +867,31 @@ class StatisticsMod {
     timer_clear = function() {
         this.tTime = 0;
     }
-
+ 
     formatTime = function(seconds) {
         const h = Math.floor(seconds / 3600);
         const m = Math.floor((seconds % 3600) / 60);
-
+ 
         if (h > 0) {
             return `${h}h ${m}m played`;
         } else {
             return `${m}m played`;
         }
     }
-
+ 
     savePPVData = function() {
-        const data = JSON.parse(window.localStorage.getItem("polystats_PPV")) || {};
-
-        data[PPVTrackIds.indexOf(this.currentTrackId)] = [this.tRespawn, this.tTime];
-
-        window.localStorage.setItem("polystats_PPV", JSON.stringify(data));
+        const data = JSON.parse(window.localStorage.getItem(STATS_STORAGE_KEY)) || {};
+        data[this.currentTrackId] = [this.tRespawn, this.tTime];
+        window.localStorage.setItem(STATS_STORAGE_KEY, JSON.stringify(data));
     }
-
+ 
     getPPVData = function() {
-        const data = JSON.parse(window.localStorage.getItem(`polystats_PPV`));
-        if (!data) {
-            return;
-        }
-        const trackData = data[PPVTrackIds.indexOf(this.currentTrackId)]
-        if (trackData) {
-            return trackData
-        } else {
-            return;
-        };
+        const data = JSON.parse(window.localStorage.getItem(STATS_STORAGE_KEY));
+        if (!data) return;
+        const trackData = data[this.currentTrackId];
+        return trackData || undefined;
     };
-
+ 
     loadData = function() {
         if (PPVTrackIds.includes(this.currentTrackId)) {
             const data = this.getPPVData();
@@ -821,15 +901,16 @@ class StatisticsMod {
             return [0, 0];
         }
     }
-
+ 
     saveData = function() {
-      if (PPVTrackIds.includes(this.currentTrackId)) {
-          this.savePPVData();
-      }
+        if (PPVTrackIds.includes(this.currentTrackId)) {
+            this.savePPVData();
+        }
     }
 };
 
 const statistics = new StatisticsMod();
+migrateLegacyStatsStorage();
 
 const updateServerEntries = function(container) {
   const allowedIds = new Set(["server-countdown", "heading-text"]);
@@ -897,7 +978,8 @@ const CreateServerEntry = async function(trackNumber, idx, total, container) {
 
   const text = document.createElement("p");
   text.textContent = trackNames[trackNumber];
-  
+
+
   const entry = document.createElement("button");
   entry.className = "server-entry";
 
@@ -1106,12 +1188,12 @@ button.PPV::before {
   justify-content: center;
   align-items: center;
   position: relative;
-  height: 300px;
+  height: 100px;
 }
 .entry-div > p {
   position: absolute;
   color: white;
-  font-size: 80px;
+  font-size: 40px;
   z-index: 10;
   pointer-events: none;
 }
@@ -1128,7 +1210,7 @@ button.PPV::before {
 .server-entry {
   background-color: #112052;
   width: 90%;
-  height: 250px;
+  height: 85px;
   clip-path: polygon(0 15%, 100% 0%, 100% 100%, 0 85%);
   padding: 0;
   border: none;
@@ -14627,6 +14709,23 @@ const createClipsMenu = function(exitFunc) {
                 : (0, l.gn)(this, ie, "f").controls;
           }
           setNameTag(e, t) {
+            if (localStorage.getItem("ppv_hideNametags") === "true") {
+              // Remove existing nametag mesh if present
+              if (null != (0, l.gn)(this, be, "f")) {
+                (0, l.gn)(this, be, "f").geometry.dispose();
+                (0, l.gn)(this, be, "f").material.map?.dispose();
+                (0, l.gn)(this, be, "f").material.dispose();
+                (0, l.gn)(this, Ae, "f").scene.remove((0, l.gn)(this, be, "f"));
+                (0, l.GG)(this, be, null, "f");
+              }
+              (0, l.GG)(this, ye, null, "f");
+              return;
+            }
+            (null != (0, l.gn)(this, ye, "f") &&
+              (0, l.gn)(this, ye, "f").countryCode == e &&
+              (0, l.gn)(this, ye, "f").name == t) ||
+              ((0, l.GG)(this, ye, { countryCode: e, name: t }, "f"),
+              (0, l.gn)(this, G, "m", We).call(this));
           }
           getCarStyle() {
             return (0, l.gn)(this, Ce, "f");
@@ -56512,6 +56611,12 @@ const createClipsMenu = function(exitFunc) {
                     e.car.isPaused = !1;
                     e.car.audioVolume = (0, C.gn)(this, Oa, "f");
 
+                    //DORA hide players
+                    if (localStorage.getItem("ppv_hidePlayers") === "true") {
+                        e.car.setVisible(false);
+                        e.car.audioVolume = 0;
+                    } else {
+
                     if (e.bufferedCarStates.length > 0) {
                         const t = e.bufferedCarStates[e.bufferedCarStates.length - 1].frames / 1e3 - e.time;
                         const i = 0.15;
@@ -56553,6 +56658,7 @@ const createClipsMenu = function(exitFunc) {
                     }
 
                     e.car.update(n);
+                    } // end else (ppv_hidePlayers)
                 }
 
                 (0, C.gn)(this, _r, "m", $a).call(this);
@@ -63814,7 +63920,63 @@ const createClipsMenu = function(exitFunc) {
                 "Toggle spectator camera",
               ),
               ge.A.ToggleSpectatorCamera,
-            ));
+            ),
+            //DORA PPV Settings
+            (function() {
+              const container = (0, C.gn)(this, ks, "f");
+              const h2 = document.createElement("h2");
+              h2.textContent = "PPV Mod";
+              container.appendChild(h2);
+              const row = document.createElement("div");
+              row.className = "setting";
+              const label = document.createElement("p");
+              label.textContent = "Nametags";
+              row.appendChild(label);
+              const wrapper = document.createElement("div");
+              wrapper.className = "button-wrapper";
+              row.appendChild(wrapper);
+              const currentVal = localStorage.getItem("ppv_hideNametags") === "true";
+              const btns = [];
+              [{ title: "Shown", value: "false" }, { title: "Hidden", value: "true" }].forEach(({ title, value }) => {
+                const btn = document.createElement("button");
+                btn.className = "button" + ((value === "true") === currentVal ? " selected" : "");
+                btn.textContent = title;
+                btn.addEventListener("click", () => {
+                  localStorage.setItem("ppv_hideNametags", value);
+                  btns.forEach(b => b.className = "button");
+                  btn.className = "button selected";
+                });
+                wrapper.appendChild(btn);
+                btns.push(btn);
+              });
+              container.appendChild(row);
+              // Players toggle
+              const rowP = document.createElement("div");
+              rowP.className = "setting";
+              const labelP = document.createElement("p");
+              labelP.textContent = "Players";
+              rowP.appendChild(labelP);
+              const wrapperP = document.createElement("div");
+              wrapperP.className = "button-wrapper";
+              rowP.appendChild(wrapperP);
+              const currentValP = localStorage.getItem("ppv_hidePlayers") === "true";
+              const btnsP = [];
+              [{ title: "Shown", value: "false" }, { title: "Hidden", value: "true" }].forEach(({ title, value }) => {
+                const btn = document.createElement("button");
+                btn.className = "button" + ((value === "true") === currentValP ? " selected" : "");
+                btn.textContent = title;
+                btn.addEventListener("click", () => {
+                  localStorage.setItem("ppv_hidePlayers", value);
+                  btnsP.forEach(b => b.className = "button");
+                  btn.className = "button selected";
+                });
+                wrapperP.appendChild(btn);
+                btnsP.push(btn);
+              });
+              container.appendChild(rowP);
+            }).call(this)
+            //
+            );
         }),
         (Ds = function (e) {
           const t = document.createElement("h2");
@@ -67352,6 +67514,7 @@ const createClipsMenu = function(exitFunc) {
           (0, C.GG)(this, Gc, [], "f");
           
           //DORA
+
           const clipping_menu = document.createElement("button");
           ((clipping_menu.className = "button button-image"),
             (clipping_menu.innerHTML = '<img src="images/preview.svg">'),
@@ -67536,6 +67699,9 @@ const createClipsMenu = function(exitFunc) {
           ((T.className = "button button-image"),
             (T.innerHTML = '<img src="images/play.svg">'),
             T.addEventListener("click", () => {
+              //DORA            
+              syncStatsWithServer(); 
+              //
               (audio.playUIClick(),
                 (0, C.gn)(this, vc, "m", qc).call(this),
                 (0, C.gn)(this, vc, "m", Xc).call(this),
